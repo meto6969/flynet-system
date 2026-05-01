@@ -59,7 +59,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // حالة القائمة للهواتف
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- حالات قواعد البيانات ---
   const [customers, setCustomers] = useState([]);
@@ -68,6 +68,7 @@ export default function App() {
   const [inventory, setInventory] = useState([]);
   const [techInventory, setTechInventory] = useState([]);
   const [materialRequests, setMaterialRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]); // أصبحت مرتبطة بفايربيس
 
   // --- دوال Firebase للمزامنة ---
   useEffect(() => {
@@ -91,12 +92,21 @@ export default function App() {
     if (!user) return;
     const getColRef = (colName) => collection(db, 'artifacts', appId, 'public', 'data', colName);
     const unsubs = [];
+    
     unsubs.push(onSnapshot(getColRef('customers'), (snap) => setCustomers(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     unsubs.push(onSnapshot(getColRef('finances'), (snap) => setFinances(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     unsubs.push(onSnapshot(getColRef('employees'), (snap) => setEmployees(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     unsubs.push(onSnapshot(getColRef('inventory'), (snap) => setInventory(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     unsubs.push(onSnapshot(getColRef('techInventory'), (snap) => setTechInventory(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     unsubs.push(onSnapshot(getColRef('materialRequests'), (snap) => setMaterialRequests(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
+    
+    // جلب الإشعارات من Firebase وترتيبها من الأحدث للأقدم
+    unsubs.push(onSnapshot(getColRef('notifications'), (snap) => {
+      const notifs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      notifs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setNotifications(notifs.slice(0, 50));
+    }, console.error));
+
     return () => unsubs.forEach(unsub => unsub());
   }, [user]);
 
@@ -142,7 +152,7 @@ export default function App() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pastedText, setPastedText] = useState('');
-  const [notifications, setNotifications] = useState([{ id: 1, title: 'النظام جاهز', message: 'مرحباً بك في نظام إدارة FLY NET وتم الربط بقاعدة البيانات.', time: 'الآن', read: false, type: 'success' }]);
+  
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -179,19 +189,42 @@ export default function App() {
       const audio = new Audio(audioUrl);
       audio.volume = 0.5; audio.play().catch(()=>{});
     } catch(e) {}
+    
+    // إظهار الرسالة المنبثقة محلياً
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000);
-    setNotifications(prev => [{ id: Date.now(), title: type === 'success' ? 'إجراء ناجح' : 'تنبيه النظام', message: message, time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }), read: false, type: type }, ...prev].slice(0, 50));
+    
+    // حفظ الإشعار في Firebase ليظهر كجرس للجميع
+    if (user) {
+      const newNotifId = Date.now().toString();
+      saveDoc('notifications', newNotifId, {
+        id: newNotifId,
+        title: type === 'success' ? 'إجراء ناجح' : 'تنبيه النظام',
+        message: message,
+        time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
+        timestamp: Date.now(),
+        read: false,
+        type: type
+      });
+
+      // تنظيف تلقائي للإشعارات للحفاظ على قاعدة البيانات خفيفة
+      if (notifications.length >= 50) {
+        const oldestNotifs = [...notifications].sort((a, b) => a.timestamp - b.timestamp).slice(0, notifications.length - 40);
+        oldestNotifs.forEach(n => delDoc('notifications', n.id));
+      }
+    }
   };
 
   const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    notifications.filter(n => !n.read).forEach(n => {
+      saveDoc('notifications', n.id, { ...n, read: true });
+    });
     setIsNotifOpen(false);
   };
 
   const handleTabClick = (id) => {
     setActiveTab(id);
-    setIsMobileMenuOpen(false); // إغلاق القائمة في الجوال بعد اختيار قسم
+    setIsMobileMenuOpen(false); 
   };
 
   // --- دوال العمليات (المخزن والموظفين) ---
@@ -220,7 +253,7 @@ export default function App() {
       const newId = Date.now().toString();
       saveDoc('techInventory', newId, { id: newId, techName: dispenseModal.techName, itemName: dispenseModal.item.itemName, quantity: q, category: dispenseModal.item.category });
     }
-    showToast(`تم صرف ${q} من ${dispenseModal.item.itemName} للفني ${dispenseModal.techName} بنجاح`, 'success');
+    showToast(`تم صرف ${q} من ${dispenseModal.item.itemName} للفني ${dispenseModal.techName}`, 'success');
     setDispenseModal({ open: false, item: null, techName: '', quantity: '' });
   };
 
@@ -705,6 +738,7 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                    {notifications.length === 0 && <div className="p-6 text-center text-slate-400 text-sm">لا توجد إشعارات</div>}
                   </div>
                 </div>
               )}
