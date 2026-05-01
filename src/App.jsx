@@ -68,7 +68,7 @@ export default function App() {
   const [inventory, setInventory] = useState([]);
   const [techInventory, setTechInventory] = useState([]);
   const [materialRequests, setMaterialRequests] = useState([]);
-  const [notifications, setNotifications] = useState([]); // أصبحت مرتبطة بفايربيس
+  const [notifications, setNotifications] = useState([]);
 
   // --- دوال Firebase للمزامنة ---
   useEffect(() => {
@@ -100,7 +100,6 @@ export default function App() {
     unsubs.push(onSnapshot(getColRef('techInventory'), (snap) => setTechInventory(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     unsubs.push(onSnapshot(getColRef('materialRequests'), (snap) => setMaterialRequests(snap.docs.map(d => ({ ...d.data(), id: d.id }))), console.error));
     
-    // جلب الإشعارات من Firebase وترتيبها من الأحدث للأقدم
     unsubs.push(onSnapshot(getColRef('notifications'), (snap) => {
       const notifs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       notifs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -183,23 +182,22 @@ export default function App() {
     return d <= nextWeek;
   }).length;
 
-  const showToast = (message, type = 'success') => {
+  // دالة الإشعارات المطورة لاستقبال عنوان مخصص (customTitle)
+  const showToast = (message, type = 'success', customTitle = null) => {
     try {
       const audioUrl = type === 'success' ? 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' : 'https://assets.mixkit.co/active_storage/sfx/2868/2868-preview.mp3';
       const audio = new Audio(audioUrl);
       audio.volume = 0.5; audio.play().catch(()=>{});
     } catch(e) {}
     
-    // إظهار الرسالة المنبثقة محلياً
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000);
     
-    // حفظ الإشعار في Firebase ليظهر كجرس للجميع
     if (user) {
       const newNotifId = Date.now().toString();
       saveDoc('notifications', newNotifId, {
         id: newNotifId,
-        title: type === 'success' ? 'إجراء ناجح' : 'تنبيه النظام',
+        title: customTitle || (type === 'success' ? 'إجراء ناجح' : 'تنبيه النظام'),
         message: message,
         time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
         timestamp: Date.now(),
@@ -207,7 +205,6 @@ export default function App() {
         type: type
       });
 
-      // تنظيف تلقائي للإشعارات للحفاظ على قاعدة البيانات خفيفة
       if (notifications.length >= 50) {
         const oldestNotifs = [...notifications].sort((a, b) => a.timestamp - b.timestamp).slice(0, notifications.length - 40);
         oldestNotifs.forEach(n => delDoc('notifications', n.id));
@@ -233,11 +230,11 @@ export default function App() {
     const data = { itemName: invItemModal.itemName, category: invItemModal.category, quantity: Number(invItemModal.quantity), unitPrice: Number(invItemModal.unitPrice) };
     if (invItemModal.isEdit) {
       saveDoc('inventory', invItemModal.id, { ...data, id: invItemModal.id });
-      showToast('تم تعديل المادة بنجاح', 'success');
+      showToast('تم تعديل المادة بنجاح', 'success', '📦 تعديل مادة');
     } else {
       const newId = Date.now().toString();
       saveDoc('inventory', newId, { ...data, id: newId });
-      showToast('تمت إضافة المادة بنجاح', 'success');
+      showToast('تمت إضافة المادة للمخزن بنجاح', 'success', '📦 إضافة مادة جديدة');
     }
     setInvItemModal({ open: false, isEdit: false, id: null, itemName: '', category: 'أجهزة بث', quantity: '', unitPrice: '' });
   };
@@ -253,7 +250,7 @@ export default function App() {
       const newId = Date.now().toString();
       saveDoc('techInventory', newId, { id: newId, techName: dispenseModal.techName, itemName: dispenseModal.item.itemName, quantity: q, category: dispenseModal.item.category });
     }
-    showToast(`تم صرف ${q} من ${dispenseModal.item.itemName} للفني ${dispenseModal.techName}`, 'success');
+    showToast(`تم صرف ${q} من ${dispenseModal.item.itemName} للفني ${dispenseModal.techName}`, 'success', '📤 صرف مواد');
     setDispenseModal({ open: false, item: null, techName: '', quantity: '' });
   };
 
@@ -270,7 +267,7 @@ export default function App() {
     const newTechQ = returnModal.techItem.quantity - q;
     if (newTechQ > 0) saveDoc('techInventory', returnModal.techItem.id, { ...returnModal.techItem, quantity: newTechQ });
     else delDoc('techInventory', returnModal.techItem.id);
-    showToast(`تم استرجاع ${q} من ${returnModal.techItem.itemName} إلى المخزن العام`, 'success');
+    showToast(`تم استرجاع ${q} من ${returnModal.techItem.itemName} إلى المخزن العام`, 'success', '📥 إرجاع مواد');
     setReturnModal({ open: false, techItem: null, quantity: '' });
   };
 
@@ -286,16 +283,22 @@ export default function App() {
       saveDoc('techInventory', newId, { id: newId, techName: req.techName, itemName: req.itemName, quantity: req.requestedQuantity, category: genItem.category });
     }
     delDoc('materialRequests', req.id);
-    showToast(`تمت الموافقة وتم صرف ${req.requestedQuantity} ${req.itemName}`, 'success');
+    showToast(`تمت الموافقة وتم صرف ${req.requestedQuantity} ${req.itemName} للفني ${req.techName}`, 'success', '✅ موافقة على طلب');
   };
 
-  const handleRejectRequest = (reqId) => { delDoc('materialRequests', reqId); showToast('تم رفض الطلب', 'success'); };
+  const handleRejectRequest = (reqId) => { 
+    delDoc('materialRequests', reqId); 
+    showToast('تم رفض طلب المواد', 'success', '❌ رفض طلب'); 
+  };
 
   const handleSubmitRequest = () => {
     if (!newRequest.techName || !newRequest.itemName || newRequest.quantity < 1) return showToast('يرجى تعبئة الحقول', 'error');
     const newId = Date.now().toString();
     saveDoc('materialRequests', newId, { id: newId, techName: newRequest.techName, itemName: newRequest.itemName, requestedQuantity: Number(newRequest.quantity), date: new Date().toISOString().split('T')[0], status: 'pending' });
-    showToast('تم إرسال الطلب بنجاح', 'success');
+    
+    // تم التعديل هنا ليكون الإشعار واضحاً ومميزاً للإدارة!
+    showToast(`الفني ${newRequest.techName} يطلب ${newRequest.quantity} من ${newRequest.itemName}`, 'success', '📦 طلب مواد جديد');
+    
     setRequestModalOpen(false); setNewRequest({ techName: '', itemName: '', quantity: 1 });
   };
 
@@ -359,7 +362,7 @@ export default function App() {
           addedCount++;
         }
       });
-      showToast(`نجاح! تم إضافة ${addedCount} مشترك.`, 'success');
+      showToast(`نجاح! تم إضافة ${addedCount} مشترك.`, 'success', '👥 إضافة مشتركين');
       setIsPasteModalOpen(false); setPastedText('');
     } else {
       showToast('لم يتم العثور على بيانات صالحة للمشتركين.', 'error');
@@ -370,16 +373,19 @@ export default function App() {
     if (!currentEmp.name || !currentEmp.role || currentEmp.baseSalary <= 0) return showToast('يرجى تعبئة الحقول الأساسية', 'error');
     if (currentEmp.id) {
       saveDoc('employees', currentEmp.id, { ...currentEmp });
-      showToast('تم تعديل بيانات الموظف بنجاح', 'success');
+      showToast('تم تعديل بيانات الموظف بنجاح', 'success', '👥 تحديث بيانات موظف');
     } else {
       const newId = Date.now().toString();
       saveDoc('employees', newId, { ...currentEmp, id: newId, bonus: 0, deduction: 0, attendancePenalty: 0, absentDays: 0, leaves: 0, history: [] });
-      showToast('تمت إضافة الموظف بنجاح', 'success');
+      showToast('تمت إضافة الموظف بنجاح', 'success', '👥 إضافة موظف جديد');
     }
     setEmpModalOpen(false);
   };
 
-  const handleDeleteEmployee = (empId) => { delDoc('employees', empId); showToast('تم حذف الموظف بنجاح', 'success'); };
+  const handleDeleteEmployee = (empId) => { 
+    delDoc('employees', empId); 
+    showToast('تم حذف الموظف بنجاح', 'success', '🗑️ حذف موظف'); 
+  };
 
   const handleFingerprintSubmit = () => {
     if (!attendanceData.empId) return showToast('يرجى اختيار الموظف', 'error');
@@ -393,11 +399,11 @@ export default function App() {
     if (attendanceData.status === 'absent') {
       updated.absentDays += 1; updated.attendancePenalty += dailyWage;
       historyLog = { id: Date.now(), date: dateStr, type: 'absent', amount: dailyWage, note: 'غياب من البصمة' };
-      showToast(`تم تسجيل غياب لـ ${emp.name}`, 'success');
+      showToast(`تم تسجيل غياب لـ ${emp.name}`, 'success', '📅 نظام الحضور (غياب)');
     } else if (attendanceData.status === 'late') {
       updated.attendancePenalty += Number(attendanceData.penaltyAmount);
       historyLog = { id: Date.now(), date: dateStr, type: 'late', amount: Number(attendanceData.penaltyAmount), note: 'تأخير من البصمة' };
-      showToast(`تم تسجيل تأخير لـ ${emp.name}`, 'success');
+      showToast(`تم تسجيل تأخير لـ ${emp.name}`, 'success', '📅 نظام الحضور (تأخير)');
     }
     if (historyLog) updated.history = [historyLog, ...(updated.history || [])];
     
@@ -413,9 +419,11 @@ export default function App() {
     const dateStr = new Date().toISOString().split('T')[0];
     let amountNum = Number(empActionModal.amount);
     
-    if (empActionModal.type === 'bonus') updated.bonus += amountNum;
-    if (empActionModal.type === 'deduction') updated.deduction += amountNum;
-    if (empActionModal.type === 'leave') { updated.leaves += amountNum; if(amountNum > 0) updated.status = 'إجازة'; }
+    let actionTitle = 'حركة إدارية';
+    if (empActionModal.type === 'bonus') { updated.bonus += amountNum; actionTitle = '💰 مكافأة موظف'; }
+    if (empActionModal.type === 'deduction') { updated.deduction += amountNum; actionTitle = '📉 خصم من موظف'; }
+    if (empActionModal.type === 'leave') { updated.leaves += amountNum; if(amountNum > 0) updated.status = 'إجازة'; actionTitle = '🏖️ إجازة موظف'; }
+    
     const historyLog = { id: Date.now(), date: dateStr, type: empActionModal.type, amount: amountNum, note: empActionModal.note || 'بدون ملاحظات' };
     updated.history = [historyLog, ...(updated.history || [])];
 
@@ -425,7 +433,8 @@ export default function App() {
        const finId = Date.now().toString();
        saveDoc('finances', finId, { id: finId, type: 'expense', amount: amountNum, date: dateStr, description: `مكافأة: ${emp.name}` });
     }
-    showToast('تم تسجيل الإجراء بنجاح', 'success');
+    
+    showToast(`تم تسجيل الإجراء لـ ${emp.name}`, 'success', actionTitle);
     setEmpActionModal({ open: false, type: '', empId: null, amount: '', note: '' });
   };
 
@@ -595,8 +604,8 @@ export default function App() {
                 <option value="all">جميع الأصناف</option><option value="أجهزة بث">أجهزة بث</option><option value="كابلات">كابلات</option><option value="أجهزة شبكة">أجهزة شبكة</option>
               </select>
               <div className="flex gap-2 w-full sm:w-auto">
-                <button onClick={() => setRequestModalOpen(true)} className="flex-1 sm:flex-none justify-center bg-purple-100 text-purple-700 px-3 py-2 rounded-lg flex items-center gap-1 text-xs sm:text-sm font-bold"><Inbox size={16} />محاكاة</button>
-                <button onClick={() => setInvItemModal({ open: true, isEdit: false, id: null, itemName: '', category: 'أجهزة بث', quantity: '', unitPrice: '' })} className="flex-1 sm:flex-none justify-center bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center gap-1 text-xs sm:text-sm font-bold"><Plus size={16} />إضافة</button>
+                <button onClick={() => setRequestModalOpen(true)} className="flex-1 sm:flex-none justify-center bg-purple-100 text-purple-700 px-3 py-2 rounded-lg flex items-center gap-1 text-xs sm:text-sm font-bold"><Inbox size={16} />محاكاة طلب فني</button>
+                <button onClick={() => setInvItemModal({ open: true, isEdit: false, id: null, itemName: '', category: 'أجهزة بث', quantity: '', unitPrice: '' })} className="flex-1 sm:flex-none justify-center bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center gap-1 text-xs sm:text-sm font-bold"><Plus size={16} />إضافة مادة</button>
               </div>
             </div>
             <div className="overflow-x-auto w-full">
@@ -794,7 +803,22 @@ export default function App() {
         </div>
       )}
 
-      {/* 3. نافذة إضافة موظف */}
+      {/* 3. نافذة محاكاة الطلب */}
+      {requestModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full sm:max-w-md overflow-hidden flex flex-col">
+            <div className="p-4 border-b bg-blue-50 flex justify-between items-center"><h3 className="font-bold text-blue-800 text-sm flex gap-2"><Inbox size={18} />محاكاة طلب فني</h3><button onClick={() => setRequestModalOpen(false)} className="bg-white p-1 rounded-full"><X size={18} /></button></div>
+            <div className="p-5 flex flex-col gap-4">
+              <div><label className="block text-xs font-medium mb-1">اختر الفني</label><select className="w-full border rounded-lg px-3 py-2 text-sm outline-none" value={newRequest.techName} onChange={e => setNewRequest({...newRequest, techName: e.target.value})}><option value="">-- اختر الفني --</option>{employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}</select></div>
+              <div><label className="block text-xs font-medium mb-1">المادة المطلوبة</label><select className="w-full border rounded-lg px-3 py-2 text-sm outline-none" value={newRequest.itemName} onChange={e => setNewRequest({...newRequest, itemName: e.target.value})}><option value="">-- اختر المادة --</option>{inventory.map(i => <option key={i.id} value={i.itemName}>{i.itemName}</option>)}</select></div>
+              <div><label className="block text-xs font-medium mb-1">الكمية</label><input type="number" min="1" className="w-full border rounded-lg px-3 py-2 text-sm outline-none" value={newRequest.quantity} onChange={e => setNewRequest({...newRequest, quantity: e.target.value})} /></div>
+            </div>
+            <div className="p-4 border-t bg-slate-50 flex justify-end gap-2"><button onClick={() => setRequestModalOpen(false)} className="bg-white border px-4 py-2 rounded-lg text-xs font-bold w-full sm:w-auto">إلغاء</button><button onClick={handleSubmitRequest} className="bg-blue-600 text-white px-6 py-2 rounded-lg text-xs font-bold w-full sm:w-auto">إرسال الطلب</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. نافذة إضافة موظف */}
       {empModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full sm:max-w-md overflow-hidden flex flex-col max-h-[90vh]">
@@ -810,7 +834,7 @@ export default function App() {
         </div>
       )}
 
-      {/* --- الإشعار المنبثق (Toast) - تم نقله للأعلى ليكون واضحاً على الهواتف --- */}
+      {/* --- الإشعار المنبثق (Toast) --- */}
       {toast.show && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 sm:top-auto sm:translate-x-0 sm:bottom-6 sm:left-6 w-[90%] sm:w-auto px-4 py-3 rounded-xl shadow-2xl text-white font-medium z-[100] flex items-center gap-3 text-xs sm:text-sm animate-in slide-in-from-top-5 sm:slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.type === 'success' ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertCircle size={20} className="shrink-0" />}
