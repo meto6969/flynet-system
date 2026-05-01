@@ -182,7 +182,6 @@ export default function App() {
     return d <= nextWeek;
   }).length;
 
-  // دالة الإشعارات المطورة لاستقبال عنوان مخصص (customTitle)
   const showToast = (message, type = 'success', customTitle = null) => {
     try {
       const audioUrl = type === 'success' ? 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' : 'https://assets.mixkit.co/active_storage/sfx/2868/2868-preview.mp3';
@@ -295,10 +294,7 @@ export default function App() {
     if (!newRequest.techName || !newRequest.itemName || newRequest.quantity < 1) return showToast('يرجى تعبئة الحقول', 'error');
     const newId = Date.now().toString();
     saveDoc('materialRequests', newId, { id: newId, techName: newRequest.techName, itemName: newRequest.itemName, requestedQuantity: Number(newRequest.quantity), date: new Date().toISOString().split('T')[0], status: 'pending' });
-    
-    // تم التعديل هنا ليكون الإشعار واضحاً ومميزاً للإدارة!
     showToast(`الفني ${newRequest.techName} يطلب ${newRequest.quantity} من ${newRequest.itemName}`, 'success', '📦 طلب مواد جديد');
-    
     setRequestModalOpen(false); setNewRequest({ techName: '', itemName: '', quantity: 1 });
   };
 
@@ -533,54 +529,148 @@ export default function App() {
     </div>
   );
 
-  const EmployeesView = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">إدارة الموظفين</h2>
-        <div className="flex w-full sm:w-auto gap-2">
-          <button onClick={() => setFingerprintModalOpen(true)} className="flex-1 sm:flex-none justify-center bg-purple-100 text-purple-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-bold"><Fingerprint size={18} /><span>البصمة</span></button>
-          <button onClick={() => { setCurrentEmp({ name: '', role: '', baseSalary: '', phone: '', status: 'مداوم', offDay: 'الجمعة' }); setEmpModalOpen(true); }} className="flex-1 sm:flex-none justify-center bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"><Plus size={18} /><span>إضافة</span></button>
+  const EmployeesView = () => {
+    // إحصائيات سريعة للـ HR Dashboard
+    const totalPayroll = employees.reduce((acc, emp) => acc + (emp.baseSalary + emp.bonus - emp.deduction - (emp.attendancePenalty || 0)), 0);
+    const onLeaveOrOff = employees.filter(emp => emp.offDay === todayName || emp.status === 'إجازة').length;
+    const presentEmployees = employees.length - onLeaveOrOff;
+
+    return (
+      <div className="space-y-6">
+        {/* الهيدر والأزرار الرئيسية */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-800">إدارة الموظفين (HR)</h2>
+          <div className="flex w-full sm:w-auto gap-2">
+            <button onClick={() => setFingerprintModalOpen(true)} className="flex-1 sm:flex-none justify-center bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold transition-colors">
+              <Fingerprint size={18} /><span>نظام البصمة</span>
+            </button>
+            <button onClick={() => { setCurrentEmp({ name: '', role: '', baseSalary: '', phone: '', status: 'مداوم', offDay: 'الجمعة' }); setEmpModalOpen(true); }} className="flex-1 sm:flex-none justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold transition-colors shadow-md shadow-blue-600/20">
+              <Plus size={18} /><span>إضافة موظف</span>
+            </button>
+          </div>
+        </div>
+
+        {/* لوحة تحكم إحصائيات الموظفين */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center shrink-0"><Users size={20} className="sm:w-6 sm:h-6" /></div>
+            <div><p className="text-[10px] sm:text-xs text-slate-500 font-medium">إجمالي الموظفين</p><p className="text-base sm:text-lg font-bold text-slate-800">{employees.length}</p></div>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center shrink-0"><CheckCircle2 size={20} className="sm:w-6 sm:h-6" /></div>
+            <div><p className="text-[10px] sm:text-xs text-slate-500 font-medium">على رأس العمل</p><p className="text-base sm:text-lg font-bold text-slate-800">{presentEmployees}</p></div>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center shrink-0"><CalendarDays size={20} className="sm:w-6 sm:h-6" /></div>
+            <div><p className="text-[10px] sm:text-xs text-slate-500 font-medium">إجازة / عطلة</p><p className="text-base sm:text-lg font-bold text-slate-800">{onLeaveOrOff}</p></div>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center shrink-0"><DollarSign size={20} className="sm:w-6 sm:h-6" /></div>
+            <div><p className="text-[10px] sm:text-xs text-slate-500 font-medium">إجمالي الرواتب هذا الشهر</p><p className="text-base sm:text-lg font-bold text-slate-800">{totalPayroll.toLocaleString()}</p></div>
+          </div>
+        </div>
+
+        {/* شبكة بطاقات الموظفين (ID Cards) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6 mt-6">
+          {employees.map(emp => {
+            const totalDeductions = emp.deduction + (emp.attendancePenalty || 0);
+            const netSalary = emp.baseSalary + emp.bonus - totalDeductions;
+            const isTodayOff = emp.offDay === todayName;
+
+            return (
+            <div key={emp.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col relative overflow-hidden group">
+              {/* شريط علوي ملون حسب الحالة */}
+              <div className={`h-1.5 w-full ${isTodayOff ? 'bg-slate-300' : emp.status === 'إجازة' ? 'bg-amber-400' : 'bg-emerald-500'}`}></div>
+              
+              <div className="p-5 flex-1 flex flex-col">
+                {/* الهيدر: الصورة، الاسم، والمسمى */}
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-slate-100 border border-slate-200 text-blue-700 rounded-full flex items-center justify-center font-bold text-xl shadow-sm shrink-0">
+                      {emp.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-base leading-tight">{emp.name}</h3>
+                      <p className="text-slate-500 text-xs font-medium flex items-center gap-1 mt-1">
+                        <Briefcase size={12} className="text-slate-400"/> {emp.role}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${
+                    isTodayOff ? 'bg-slate-50 text-slate-600 border-slate-200' : 
+                    emp.status === 'إجازة' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                    'bg-emerald-50 text-emerald-600 border-emerald-200'
+                  }`}>
+                    {isTodayOff ? 'عطلة' : emp.status}
+                  </span>
+                </div>
+
+                {/* ملخص الحضور (الإجازات والغياب) */}
+                <div className="flex justify-between items-center bg-slate-50 rounded-lg p-2.5 mb-4 border border-slate-100">
+                   <div className="text-center flex-1 border-l border-slate-200">
+                     <p className="text-[10px] text-slate-400 mb-0.5">الإجازات</p>
+                     <p className="font-bold text-slate-700 text-sm">{emp.leaves}</p>
+                   </div>
+                   <div className="text-center flex-1 border-l border-slate-200">
+                     <p className="text-[10px] text-slate-400 mb-0.5">الغيابات</p>
+                     <p className={`font-bold text-sm ${emp.absentDays > 0 ? 'text-red-500' : 'text-slate-700'}`}>{emp.absentDays || 0}</p>
+                   </div>
+                   <div className="text-center flex-1">
+                     <p className="text-[10px] text-slate-400 mb-0.5">العطلة</p>
+                     <p className="font-bold text-slate-700 text-xs sm:text-sm truncate px-1">{emp.offDay}</p>
+                   </div>
+                </div>
+
+                {/* التفاصيل المالية */}
+                <div className="space-y-2 mt-auto">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500">الراتب الاسمي:</span>
+                    <span className="font-semibold text-slate-700">{emp.baseSalary.toLocaleString()} د.ع</span>
+                  </div>
+                  
+                  {(emp.bonus > 0 || totalDeductions > 0) && (
+                    <div className="flex justify-between items-center text-xs pt-1.5 border-t border-slate-100 border-dashed">
+                      <span className="text-slate-400">حركات هذا الشهر:</span>
+                      <div className="flex gap-2">
+                        {emp.bonus > 0 && <span className="text-emerald-600 font-bold bg-emerald-50 px-1.5 rounded" title="مكافآت">+{emp.bonus.toLocaleString()}</span>}
+                        {totalDeductions > 0 && <span className="text-red-500 font-bold bg-red-50 px-1.5 rounded" title="خصومات وغيابات">-{totalDeductions.toLocaleString()}</span>}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-between items-center bg-blue-50/50 p-2.5 rounded-lg border border-blue-100/50 mt-2">
+                    <span className="text-blue-800 font-bold text-xs">صافي الراتب:</span>
+                    <span className="font-black text-blue-700 text-base">{netSalary.toLocaleString()} <span className="text-[10px] font-normal">د.ع</span></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* شريط الإجراءات السفلي */}
+              <div className="p-3 border-t border-slate-100 bg-slate-50/80 flex justify-between items-center gap-2">
+                <div className="flex gap-1.5">
+                  <button onClick={() => setEmpActionModal({ open: true, type: 'bonus', empId: emp.id, amount: '', note: '' })} className="p-1.5 text-emerald-600 bg-emerald-100/50 hover:bg-emerald-100 rounded-md transition-colors" title="إضافة مكافأة"><Gift size={16} /></button>
+                  <button onClick={() => setEmpActionModal({ open: true, type: 'deduction', empId: emp.id, amount: '', note: '' })} className="p-1.5 text-red-600 bg-red-100/50 hover:bg-red-100 rounded-md transition-colors" title="تسجيل خصم/سلفة"><TrendingDown size={16} /></button>
+                  <button onClick={() => setEmpActionModal({ open: true, type: 'leave', empId: emp.id, amount: '1', note: '' })} className="p-1.5 text-amber-600 bg-amber-100/50 hover:bg-amber-100 rounded-md transition-colors" title="تسجيل إجازة"><CalendarDays size={16} /></button>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setEmpDetailsModal({ open: true, employee: emp })} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-blue-600 bg-blue-100/50 hover:bg-blue-100 rounded-md transition-colors"><FileText size={14} /> سجل</button>
+                  <button onClick={() => { setCurrentEmp(emp); setEmpModalOpen(true); }} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="تعديل"><Edit2 size={16}/></button>
+                  <button onClick={() => handleDeleteEmployee(emp.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="حذف"><Trash2 size={16}/></button>
+                </div>
+              </div>
+            </div>
+            );
+          })}
+          {employees.length === 0 && (
+            <div className="col-span-1 sm:col-span-2 xl:col-span-3 flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-slate-200 border-dashed">
+              <Briefcase size={48} className="text-slate-300 mb-4" />
+              <p className="text-slate-500 font-medium">لا يوجد موظفون حالياً، قم بإضافة موظفك الأول.</p>
+            </div>
+          )}
         </div>
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {employees.map(emp => {
-          const totalDeductions = emp.deduction + (emp.attendancePenalty || 0);
-          const netSalary = emp.baseSalary + emp.bonus - totalDeductions;
-          const isTodayOff = emp.offDay === todayName;
-
-          return (
-          <div key={emp.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 sm:p-5 flex flex-col gap-3 relative">
-            <div className={`absolute top-0 right-0 w-1 h-full ${isTodayOff ? 'bg-slate-400' : emp.status === 'مداوم' ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center font-bold">{emp.name.charAt(0)}</div>
-                <div><h3 className="font-bold text-slate-800">{emp.name}</h3><p className="text-blue-600 text-xs">{emp.role}</p></div>
-              </div>
-            </div>
-            
-            <div className="bg-slate-50 p-3 rounded-lg space-y-2 border border-slate-100">
-              <div className="flex justify-between text-xs sm:text-sm"><span className="text-slate-500">الراتب الاسمي:</span><span className="font-bold text-slate-700">{emp.baseSalary.toLocaleString()} د.ع</span></div>
-              <div className="pt-2 border-t flex justify-between text-sm"><span className="font-bold">الصافي للدفع:</span><span className="font-black text-blue-700">{netSalary.toLocaleString()} د.ع</span></div>
-            </div>
-
-            <div className="flex justify-between gap-1 pt-2 border-t mt-auto">
-              <div className="flex gap-1">
-                <button onClick={() => setEmpActionModal({ open: true, type: 'bonus', empId: emp.id, amount: '', note: '' })} className="bg-green-50 text-green-600 p-2 rounded-lg" title="مكافأة"><Gift size={16} /></button>
-                <button onClick={() => setEmpActionModal({ open: true, type: 'deduction', empId: emp.id, amount: '', note: '' })} className="bg-red-50 text-red-600 p-2 rounded-lg" title="سلفة"><TrendingDown size={16} /></button>
-              </div>
-              <div className="flex gap-1">
-                <button onClick={() => setEmpDetailsModal({ open: true, employee: emp })} className="text-blue-600 bg-blue-50 p-2 rounded-lg"><FileText size={16} /></button>
-                <button onClick={() => { setCurrentEmp(emp); setEmpModalOpen(true); }} className="text-slate-500 bg-slate-50 p-2 rounded-lg"><Edit2 size={16}/></button>
-                <button onClick={() => handleDeleteEmployee(emp.id)} className="text-red-500 bg-red-50 p-2 rounded-lg"><Trash2 size={16}/></button>
-              </div>
-            </div>
-          </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const InventoryView = () => {
     const filteredInventory = inventoryFilter === 'all' ? inventory : inventory.filter(item => item.category === inventoryFilter);
